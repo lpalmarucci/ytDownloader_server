@@ -1,0 +1,24 @@
+{
+  "name": "ytdownloader_server",
+  "version": "1.0.0",
+  "description": "Backend youtube downloader",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lpalmarucci/ytDownloader_server.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/lpalmarucci/ytDownloader_server/issues"
+  },
+  "homepage": "https://github.com/lpalmarucci/ytDownloader_server#readme",
+  "dependencies": {
+    "express": "^4.17.1",
+    "nodemon": "^2.0.15",
+    "ytdl-core": "^4.9.1"
+  }
+}
