@@ -4,22 +4,49 @@ const port = 3001;
 const ytdl = require('ytdl-core');
 const mysql = require('mysql');
 const cors = require('cors');
+require('dotenv').config();
+const { getFormattedDate } = require('./lib/date');
+//***** PASSPORT *****
+const bcrypt = require('bcrypt');
+const session = require('express-session');
+const passport = require('passport');
+//******************** */
+const cookieParser = require("cookie-parser");
+//----------------------------------------- END OF IMPORTS---------------------------------------------------
 
+//----------------------------------------- MIDDLEWARE ------------------------------------------------------
 //To use if the 'Content-Type' header is 'application/json'
 app.use(express.json())
 
 //To use if the 'Content-Type' header is 'application/x-www-form-urlencoded'
-// app.use(express.urlencoded({
-//     extended: true
-// }));
+app.use(express.urlencoded({
+    extended: true
+}));
+app.use(
+    cors({
+        origin: "http://localhost:3000", // <-- location of the react app were connecting to
+        credentials: true,
+    })
+);
+// app.use(flash());
+app.use(session({
+    secret: '1234',
+    resave: true,
+    saveUninitialized: false,
+    cookie: { secure: false }
+}));
 
-app.use(cors());
+app.use(cookieParser('1234'))
+// Init passport authentication 
+app.use(passport.initialize());
+// persistent login sessions 
+app.use(passport.session());
 
 const connection = mysql.createConnection({
-    host: 'localhost',
-    user: 'ytdl-admin',
-    password: 'ytdl-admin-pwd-secret',
-    database: 'ytdldownloader'
+    host: process.env.DB_HOST,
+    user: 'root',
+    password: 'rootroot',
+    database: process.env.DB_DATABASE
 })
 
 connection.connect((connectionError) => {
@@ -31,21 +58,136 @@ connection.connect((connectionError) => {
     }
 });
 
+const checkAuth = (req, res, next) => {
+    if (req.isAuthenticated()) {
+        console.log('User is authenticated');
+        next();
+    } else {
+        res.json({ status: 401 })
+    }
+}
 
-app.use(express.static('../build'));
-global.__basedir = __dirname;
+//Creating local strategy
+require('./passportConfig.js')(passport, (username) => {
+    return new Promise((resolve, reject) => {
+        connection.query(`
+        SELECT *
+        FROM tUsers
+        WHERE username ='${username}'
+    `, (err, res) => {
+            console.log(res);
+            if (res.length > 0) {
+                resolve(res[0])
+            } else {
+                resolve({ error: 'User not found' })
+            }
+        })
+    }, (err) => {
+        console.log('errore promise ', err);
+        reject('Error while fetching info about user');
+    })
 
-app.post('/dummy', (req, res) => {
-    console.log(req.body);
-    res.send({ hello: "hello World" })
+}, (user_id) => {
+    return new Promise((resolve, reject) => {
+        try {
+            connection.query(`SELECT * FROM tUsers WHERE user_id = '${user_id}'`, (err, res) => {
+                if (res.length > 0) {
+                    resolve(res[0])
+                } else {
+                    reject(err);
+                }
+            })
+        } catch (e) {
+            reject(e);
+        }
+    })
+});
+
+app.post('/register', async (req, resp) => {
+    const { email, username, password } = req.body;
+    const hashedPassword = await bcrypt.hash(password, 10);
+    try {
+        connection.query(`SELECT COUNT(*) as NUM_RECORDS FROM tUsers WHERE username = '${username}'`, (err, res) => {
+            if (res.length === 0 || res[0].NUM_RECORDS > 0) {
+                resp.json({
+                    status: 200,
+                    severity: 'Warning',
+                    body: {
+                        errorMessage: 'User already registered, please log in'
+                    }
+                })
+            } else {
+                connection.query(`INSERT INTO tUsers (email,username, password) VALUES('${email}','${username}','${hashedPassword}')`, (err, res) => {
+                    console.log('error insert user--> ', err)
+                    console.log('result insert user', res);
+                    if (res.affectedRows === 1) {
+                        resp.json({
+                            status: 200,
+                            severity: 'no-error',
+                            body: {
+                                message: 'Registration completed'
+                            }
+                        })
+                    } else {
+                        resp.json({
+                            status: 200,
+                            severity: 'Error',
+                            body: {
+                                errorMessage: 'Unable to complete registration'
+                            }
+                        })
+                    }
+                })
+            }
+        });
+    } catch (e) {
+        resp.json({
+            status: 200,
+            severity: 'Error',
+            body: {
+                errorMessage: e
+            }
+        })
+    }
 })
 
-app.post("/download", (req, res) => {
+app.post("/login", (req, res, next) => {
+    passport.authenticate("local", (err, user, info) => {
+        console.log(`user --> ${user}`);
+        console.log(`info --> ${info}`);
+        if (info) res.json({ status: 200, severity: 'Error', body: { errorMessage: info.message } });
+        if (!user) res.json({ status: 200, body: { errorMessage: 'Please verify your credentials' } })
+        else {
+            req.logIn(user, (err) => {
+                if (err) res.json({ status: 200, body: { message: err } })
+                res.json({
+                    status: 200,
+                    severity: 'no-error',
+                    body: {
+                        message: 'Authenticated'
+                    }
+                })
+                console.log(req.user)
+            });
+        }
+    })(req, res, next);
+});
+
+//FOR TESTING
+// app.post('/authenticated', (req, res) => {
+//     passport.authenticate('local', (err, info, fields) => {
+//         console.log(info);
+//         res.json({ message: 'OK' })
+//     })
+// })
+
+app.post("/download", checkAuth, (req, res) => {
     // const url = req.query.url;
-    const { url, user } = req.body;
-    if (!user || !url) {
+    const { url } = req.body;
+    if (!url) {
         res.end({
             status: 400,
+            severity: 'Error',
             body: {
                 msg: 'Check either the username or the url'
             }
@@ -112,6 +254,7 @@ app.post("/download", (req, res) => {
                 console.log(e);
                 res.json({
                     status: 404,
+                    severity: 'Warning',
                     body: {
                         msg: 'Video not found!'
                     }
@@ -128,9 +271,5 @@ app.post("/download", (req, res) => {
         });
     }
 });
-
-const getFormattedDate = (date) => {
-    return date.toISOString().slice(0, 19).replace('T', ' ');
-}
 
 app.listen(port, () => console.log(`Server listening on ${port}`));
