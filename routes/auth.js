@@ -8,7 +8,8 @@ const checkAuth = (req, res, next) => {
         console.log(`User ${username} is authenticated`);
         next();
     } else {
-        res.json({ status: 401, severity: 'Error', body: { errorMessage: 'Not logged in, please sign in' } })
+        console.log(` not authenticated`)
+        res.json({ status: 401, severity: 'Error', body: { errorMessage: 'Not logged in, please sign in' } }).end();
     }
 }
 

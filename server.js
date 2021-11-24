@@ -33,13 +33,13 @@ app.use(
 );
 // app.use(flash());
 app.use(session({
-    secret: '1234',
+    secret: 'ajeje-brazorf',
     resave: true,
     saveUninitialized: false,
     cookie: { secure: false }
 }));
 
-app.use(cookieParser('1234'))
+app.use(cookieParser('ajeje-brazorf'))
 // Init passport authentication 
 app.use(passport.initialize());
 // persistent login sessions 
@@ -100,8 +100,6 @@ app.post("/download", checkAuth, (req, res) => {
         ytdl.getInfo(url).then((info) => {
             const { videoId, likes } = info.videoDetails;
             let { id: authorId, name, user_url, channel_url, subscriber_count } = info.videoDetails.author;
-
-            connection.beginTransaction();
             connection.query(`
                 SELECT videoId
                 FROM tVideos
@@ -122,8 +120,8 @@ app.post("/download", checkAuth, (req, res) => {
                 FROM tAuthors
                 WHERE authorId = '${authorId}'
             `, (err, authorResponse, fields) => {
-                // console.log(`err select authors --> ${err}`)
-                // console.log('author response query ', authorResponse)
+                console.log(`err select authors --> ${err}`)
+                console.log('author response query ', authorResponse)
                 if (authorResponse.length > 0) {
                     authorId = authorResponse[0].authorId;
                 } else {
@@ -149,13 +147,12 @@ app.post("/download", checkAuth, (req, res) => {
             // 18          mp4       640x360
             // 22          mp4       1280x720    (best)
             try {
-                console.log('videodetails --> ', info.videoDetails);
-                ytdl(url, { quality: [137], filter: format => format.container === 'mp4' }).pipe(res);
-                connection.query(`INSERT INTO tDownloads(videoid, user, updDate) VALUES ('${videoId}','${req.user}','${now}')`, (err, res, fields) => {
+                // ytdl.chooseFormat(info.formats, { quality: ['134'] });
+                ytdl(url, { quality: '134' }).pipe(res);
+                connection.query(`INSERT INTO tDownloads(videoid, user, updDate) VALUES ('${videoId}','${req.user.username}','${now}')`, (err, res, fields) => {
                     // console.log('err insert tDownloads ', err);
                     // console.log('res insert tDownloads ', res);
                     if (err) console.error(err);
-                    connection.commit();
                 });
             } catch (e) {
                 console.log(e);
@@ -170,7 +167,7 @@ app.post("/download", checkAuth, (req, res) => {
                 connection.rollback();
             }
         }).catch((err) => {
-            console.log("error", err);
+            // console.log("error", err);
             res.send({
                 status: 404,
                 severity: 'Error',
